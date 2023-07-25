@@ -240,13 +240,14 @@ void ST7735_FillRectangle(uint16_t x, uint16_t y, uint16_t w, uint16_t h,
 	// clipping
 	if ((x >= ST7735_WIDTH) || (y >= ST7735_HEIGHT))
 		return;
-	if ((x + w - 1) >= ST7735_WIDTH)
-		w = ST7735_WIDTH - x;
-	if ((y + h - 1) >= ST7735_HEIGHT)
-		h = ST7735_HEIGHT - y;
+//	if ((x + w - 1) >= ST7735_WIDTH)
+//		w = ST7735_WIDTH - x;
+//	if ((y + h - 1) >= ST7735_HEIGHT)
+//		h = ST7735_HEIGHT - y;
 
 	ST7735_Select();
-	ST7735_SetAddressWindow(x, y, x + w - 1, y + h - 1);
+//	ST7735_SetAddressWindow(x, y, x + w - 1, y + h - 1);
+	ST7735_SetAddressWindow(x, y, w, h);
 
 	uint8_t data[] = { color >> 8, color & 0xFF };
 	HAL_GPIO_WritePin(ST7735_DC_GPIO_Port, ST7735_DC_Pin, GPIO_PIN_SET);
@@ -265,13 +266,14 @@ void ST7735_FillRectangleFast(uint16_t x, uint16_t y, uint16_t w, uint16_t h,
 	// clipping
 	if ((x >= ST7735_WIDTH) || (y >= ST7735_HEIGHT))
 		return;
-	if ((x + w - 1) >= ST7735_WIDTH)
-		w = ST7735_WIDTH - x;
-	if ((y + h - 1) >= ST7735_HEIGHT)
-		h = ST7735_HEIGHT - y;
+//	if ((x + w - 1) >= ST7735_WIDTH)
+//		w = ST7735_WIDTH - x;
+//	if ((y + h - 1) >= ST7735_HEIGHT)
+//		h = ST7735_HEIGHT - y;
 
 	ST7735_Select();
-	ST7735_SetAddressWindow(x, y, x + w - 1, y + h - 1);
+//	ST7735_SetAddressWindow(x, y, x + w - 1, y + h - 1);
+	ST7735_SetAddressWindow(x, y, w, h);
 
 	// Prepare whole line in a single buffer
 	uint8_t pixel[] = { color >> 8, color & 0xFF };

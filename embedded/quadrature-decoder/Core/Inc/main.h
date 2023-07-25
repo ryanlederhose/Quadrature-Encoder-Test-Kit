@@ -35,10 +35,21 @@ extern "C" {
 #include "stdio.h"
 #include "string.h"
 #include "math.h"
+#include "st7735.h"
 
 #define NO_ROTATION 0
 #define CW_ROTATION 1
 #define CCW_ROTATION 2
+
+#define	BLACK   0x0000
+#define	BLUE    0x001F
+#define	RED 	0xF800
+#define	GREEN   0x07E0
+#define CYAN    0x07FF
+#define MAGENTA 0xF81F
+#define YELLOW  0xFFE0
+#define WHITE   0xFFFF
+#define RGB(r, g, b) (((r & 0xF8) << 8) | ((g & 0xFC) << 3) | ((b & 0xF8) >> 3))
 
 typedef struct __attribute__((packed)) _encoderInstance {
 	int64_t timerCount;
@@ -57,6 +68,52 @@ typedef struct {
 	int data[MAX_SIZE];
 	int top;
 } FILOBuffer;
+
+/**
+ * @brief draw the start screen of the lcd
+ */
+void LCD_Start(void);
+
+/**
+ * @brief draw the border around the screen
+ */
+void LCD_DrawBorder(void);
+
+/**
+ * @brief update the timer count
+ */
+void LCD_TimerCount(int64_t count);
+
+/**
+ * @brief update the channel counts
+ * @param data msg struct
+ */
+void LCD_ChannelCount(encoderInstance_t data);
+
+/**
+ * @brief update the pulses per rotation
+ * @param pulses pulses per rotation
+ */
+void LCD_PulsesPerRotation(int pulses);
+
+/**
+ * @brief update the rotation direction
+ * @param rotation direction
+ */
+void LCD_RotationDirection(int direction);
+
+/**
+ * @brief Update the rpm and frequency
+ * @param rpm rotations per minute
+ * @param freq frequency of rotation
+ */
+void LCD_RpmFreq(double rpm, double frequency);
+
+/**
+ * @brief timer callback function for overflow
+ * @param htim timer handle
+ */
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim);
 /* USER CODE END Includes */
 
 /* Exported types ------------------------------------------------------------*/
@@ -88,12 +145,6 @@ void Error_Handler(void);
 #define LCD_RESET_GPIO_Port GPIOB
 #define SPI1_CS_Pin GPIO_PIN_4
 #define SPI1_CS_GPIO_Port GPIOB
-#define A_CHANNEL_Pin GPIO_PIN_5
-#define A_CHANNEL_GPIO_Port GPIOB
-#define A_CHANNEL_EXTI_IRQn EXTI9_5_IRQn
-#define B_CHANNEL_Pin GPIO_PIN_6
-#define B_CHANNEL_GPIO_Port GPIOB
-#define B_CHANNEL_EXTI_IRQn EXTI9_5_IRQn
 /* USER CODE BEGIN Private defines */
 
 /* USER CODE END Private defines */

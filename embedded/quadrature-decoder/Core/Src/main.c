@@ -23,6 +23,8 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <stdio.h>
+#include <string.h>
+#include <math.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -60,6 +62,9 @@ static uint8_t rotation = 0;
 static uint32_t aChannel = 0;
 static uint32_t bChannel = 0;
 static uint32_t zChannel = 0;
+
+//Counts overflows per second
+static int overflowCount = 0;
 
 //RTOS message queue
 QueueHandle_t msgQueue;
@@ -116,6 +121,7 @@ int main(void) {
 	MX_SPI1_Init();
 	/* USER CODE BEGIN 2 */
 
+	ST7735_Init();	//initialise the lcd display
 	/* USER CODE END 2 */
 
 	/* USER CODE BEGIN RTOS_MUTEX */
@@ -221,7 +227,7 @@ static void MX_SPI1_Init(void) {
 	/* SPI1 parameter configuration*/
 	hspi1.Instance = SPI1;
 	hspi1.Init.Mode = SPI_MODE_MASTER;
-	hspi1.Init.Direction = SPI_DIRECTION_2LINES;
+	hspi1.Init.Direction = SPI_DIRECTION_1LINE;
 	hspi1.Init.DataSize = SPI_DATASIZE_8BIT;
 	hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
 	hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
@@ -348,18 +354,9 @@ static void MX_GPIO_Init(void) {
 	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
 	HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-	/*Configure GPIO pins : A_CHANNEL_Pin B_CHANNEL_Pin */
-	GPIO_InitStruct.Pin = A_CHANNEL_Pin | B_CHANNEL_Pin;
-	GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING_FALLING;
-	GPIO_InitStruct.Pull = GPIO_PULLDOWN;
-	HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
 	/* EXTI interrupt init*/
-	HAL_NVIC_SetPriority(EXTI4_IRQn, 14, 0);
+	HAL_NVIC_SetPriority(EXTI4_IRQn, 15, 0);
 	HAL_NVIC_EnableIRQ(EXTI4_IRQn);
-
-	HAL_NVIC_SetPriority(EXTI9_5_IRQn, 5, 0);
-	HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
 
 }
 
@@ -374,6 +371,10 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
 	//Check if pin 4 raised the interrupt
 	if (GPIO_Pin == GPIO_PIN_4) {
 
+		overflowCount++;
+		aChannel = 0;
+		bChannel = 0;
+
 		uint32_t count = TIM2->CNT;	//get the timer count
 
 		zChannel++;
@@ -385,17 +386,156 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
 			cpr = 65535 - count;
 			__HAL_TIM_SET_COUNTER(&htim2, 65535);
 		}
-		aChannel = 0;
-		bChannel = 0;
 
 		return;
-	} else if (GPIO_Pin == GPIO_PIN_5) {	//check if pin 5 raised interrupt
-		aChannel++;
-		return;
-	} else if (GPIO_Pin == GPIO_PIN_6) {	//check if pin 6 raised interrupt
-		bChannel++;
-		return;
 	}
+}
+
+/**
+ * @brief timer callback function for overflow
+ * @param htim timer handle
+ */
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
+	overflowCount++;
+}
+
+/**
+ * @brief draw the border around the screen
+ */
+void LCD_DrawBorder(void) {
+	ST7735_FillScreenFast(RED);
+	ST7735_FillRectangleFast(4, 4, ST7735_WIDTH - 4, ST7735_HEIGHT - 4, WHITE);
+}
+
+/**
+ * @brief draw the start screen of the lcd
+ */
+void LCD_Start(void) {
+	LCD_DrawBorder();	//draw border
+
+	ST7735_WriteString(14, ST7735_HEIGHT / 2 - 7, "Encoder Test", Font_11x18,
+			BLACK, WHITE);
+
+	HAL_Delay(2500);
+
+	LCD_DrawBorder();
+
+	ST7735_WriteString(5, 14, "Count:", Font_11x18, BLACK, WHITE);
+	LCD_TimerCount(0);
+
+	ST7735_FillRectangleFast(6, 86, 60, 120, WHITE);
+	ST7735_WriteString(6, 86, "A:", Font_7x10, BLACK, WHITE);
+	ST7735_WriteString(6, 97, "B:", Font_7x10, BLACK, WHITE);
+	ST7735_WriteString(6, 108, "Z:", Font_7x10, BLACK, WHITE);
+
+	encoderInstance_t temp;
+	temp.aCount = 0;
+	temp.bCount = 0;
+	temp.zCount = 0;
+	LCD_ChannelCount(temp);
+
+	ST7735_WriteString(5, 34, "P.P.R:", Font_11x18, BLACK, WHITE);
+	LCD_PulsesPerRotation(0);
+
+	ST7735_WriteString(16, 54, "DIR.:", Font_11x18, BLACK, WHITE);
+	LCD_RotationDirection(NO_ROTATION);
+
+	LCD_RpmFreq(0, 0);
+
+}
+
+/**
+ * @brief Update the rpm and frequency
+ * @param rpm rotations per minute
+ * @param freq frequency of rotation
+ */
+void LCD_RpmFreq(double rpm, double frequency) {
+	char rpmBuf[20], freqBuf[20];
+	memset(rpmBuf, 0, sizeof(rpmBuf));
+	memset(freqBuf, 0, sizeof(freqBuf));
+	sprintf(rpmBuf, "%.1frpm", rpm);
+	sprintf(freqBuf, "%.1fHz", frequency);
+
+	ST7735_FillRectangleFast(80, 86, 154, 120, WHITE);
+	if ((strlen(rpmBuf) < 6) || (strlen(freqBuf) < 6)) {
+		ST7735_WriteString(80, 86, rpmBuf, Font_7x10, BLACK, WHITE);
+		ST7735_WriteString(80, 97, freqBuf, Font_7x10, BLACK, WHITE);
+	} else {
+		ST7735_WriteString(80, 86, "error", Font_7x10, BLACK, WHITE);
+		ST7735_WriteString(80, 97, "error", Font_7x10, BLACK, WHITE);
+	}
+}
+
+/**
+ * @brief update the rotation direction
+ * @param rotation direction
+ */
+void LCD_RotationDirection(int direction) {
+	char *buf;
+
+	if (direction == NO_ROTATION) {
+		buf = "NULL";
+	} else if (direction == CW_ROTATION) {
+		buf = "CW";
+	} else {
+		buf = "CCW";
+	}
+
+	ST7735_FillRectangleFast(80, 54, 130, 74, WHITE);
+	ST7735_WriteString(80, 54, buf, Font_11x18, BLACK, WHITE);
+}
+
+/**
+ * @brief update the pulses per rotation
+ * @param pulses pulses per rotation
+ */
+void LCD_PulsesPerRotation(int pulses) {
+	char buffer[10];
+	memset(buffer, 0, sizeof(buffer));
+	sprintf(buffer, "%d", pulses);
+
+	uint8_t len = strlen(buffer);
+	uint8_t pos = (int) (90 - (len - 1) / 2 * 11);
+
+	ST7735_FillRectangleFast(69, 34, 140, 56, WHITE);
+	ST7735_WriteString(pos, 34, buffer, Font_11x18, BLACK, WHITE);
+}
+
+/**
+ * @brief update the timer count
+ */
+void LCD_TimerCount(int64_t count) {
+	char buffer[6];
+	memset(buffer, 0, sizeof(buffer));
+	sprintf(buffer, "%ld", count);
+
+	uint8_t len = strlen(buffer);
+	uint8_t pos = (int) (90 - (len - 1) / 2 * 11);
+
+	ST7735_FillRectangleFast(70, 14, 140, 32, WHITE);
+	ST7735_WriteString(pos, 14, buffer, Font_11x18, BLACK, WHITE);
+}
+
+/**
+ * @brief update the channel counts
+ * @param data msg struct
+ */
+void LCD_ChannelCount(encoderInstance_t data) {
+	char buffer[5];
+	memset(buffer, 0, sizeof(buffer));
+	ST7735_FillRectangleFast(24, 86, 75, 120, WHITE);
+
+	sprintf(buffer, "%ld", data.aCount);
+	ST7735_WriteString(24, 86, buffer, Font_7x10, BLACK, WHITE);
+	memset(buffer, 0, sizeof(buffer));
+
+	sprintf(buffer, "%ld", data.bCount);
+	ST7735_WriteString(24, 97, buffer, Font_7x10, BLACK, WHITE);
+	memset(buffer, 0, sizeof(buffer));
+
+	sprintf(buffer, "%ld", data.zCount);
+	ST7735_WriteString(24, 108, buffer, Font_7x10, BLACK, WHITE);
+	memset(buffer, 0, sizeof(buffer));
 }
 
 /* USER CODE END 4 */
@@ -423,8 +563,10 @@ void taskEncoder(void const *argument) {
 	int64_t timerCount = 0;
 	int64_t prevTimerCount = timerCount;
 	int64_t timerCountPrint = timerCount;
+	int64_t timerCountSecond = timerCount;
 
 	uint32_t pps = 0;	//pulses per second
+	uint32_t rps = 0;
 	double rpm;
 	double freq = 0;
 
@@ -447,12 +589,10 @@ void taskEncoder(void const *argument) {
 			//clockwise rotation
 			stillTime = HAL_GetTick();
 			rotation = CW_ROTATION;
-			pps++;
 		} else if ((timerCount - prevTimerCount) < 0) {
 			//counter clockwise rotation
 			stillTime = HAL_GetTick();
 			rotation = CCW_ROTATION;
-			pps++;
 		} else {
 			//no rotation, no velocity
 			if ((HAL_GetTick() - stillTime) >= 500) {
@@ -461,21 +601,34 @@ void taskEncoder(void const *argument) {
 		}
 
 		//Calculate rpm and frequency every second
-		if ((HAL_GetTick() - rotationTime) >= 1000) {
+		if ((HAL_GetTick() - rotationTime) >= 500) {
+
+			if (overflowCount > 0) {
+				if (timerCount < timerCountSecond) {
+					pps = 4096 * overflowCount - timerCountSecond + timerCount;
+				} else if (timerCount > timerCountSecond) {
+					pps = 4096 * overflowCount + timerCountSecond - timerCount;
+				} else {
+					pps = 4096 * overflowCount;
+				}
+			} else {
+				pps = abs(timerCount - timerCountSecond);
+			}
+
 			if (cpr == 0) {
 				rpm = 0;
 			} else {
-				rpm = pps * 60 / cpr;
+				rpm = pps * 2 * 60 / cpr;
 			}
 
 			freq = 0.0166667 * rpm;
 			rotationTime = HAL_GetTick();
-			tempRotation = timerCount;
 			pps = 0;
+			overflowCount = 0;
+			timerCountSecond = timerCount;
 		}
 
 		prevTimerCount = timerCount;
-		prevRotation = rotation;
 
 		//Adjust timer value for user friendly value
 		if (timerCount <= 10000) {
@@ -484,8 +637,19 @@ void taskEncoder(void const *argument) {
 			timerCountPrint = -(65536 - timerCount);
 		}
 
+		if (timerCountPrint > 0) {
+			aChannel = (int) ceil(timerCountPrint / 2.00);
+			bChannel = timerCountPrint - aChannel;
+		} else if (timerCountPrint < 0) {
+			aChannel = (int) ceil(timerCountPrint / 2.00);
+			bChannel = timerCountPrint - aChannel;
+		} else {
+			aChannel = 0;
+			bChannel = 0;
+		}
+
 		//Every 100ms send parameters to struct
-		if ((HAL_GetTick() - prevTime) >= 100) {
+		if ((HAL_GetTick() - prevTime) >= 1) {
 			msgStruct.timerCount = timerCountPrint;
 			msgStruct.rpm = rpm;
 			msgStruct.freq = freq;
@@ -518,8 +682,10 @@ void taskEncoder(void const *argument) {
 void taskLCD(void const *argument) {
 	/* USER CODE BEGIN taskLCD */
 
-	//  ST7735_Init();	//initialise the lcd display
+	LCD_Start();
+
 	encoderInstance_t msgStruct;
+	encoderInstance_t msgStructPrev;
 	char buf[100];
 	memset(buf, 0, sizeof(buf));
 
@@ -527,32 +693,31 @@ void taskLCD(void const *argument) {
 	for (;;) {
 		if (msgQueue != NULL) {
 			if (xQueueReceive(msgQueue, &msgStruct, (TickType_t) 10) == pdPASS) {
-				sprintf(buf, "\r\nTimer Counter: %ld\r\n",
-						msgStruct.timerCount);
-				HAL_UART_Transmit(&huart2, buf, sizeof(buf), 10);
-				memset(buf, 0, sizeof(buf));
-//			sprintf(buf, "\r\nA Counter: %ld\r\n", msgStruct.aCount);
-//			HAL_UART_Transmit(&huart2, buf, sizeof (buf), 10);
-//			memset(buf, 0, sizeof (buf));
-//			sprintf(buf, "\r\nB Counter: %ld\r\n", msgStruct.bCount);
-//			HAL_UART_Transmit(&huart2, buf, sizeof (buf), 10);
-//			memset(buf, 0, sizeof (buf));
-//			sprintf(buf, "\r\nZ Counter: %ld\r\n", msgStruct.zCount);
-//			HAL_UART_Transmit(&huart2, buf, sizeof (buf), 10);
-//			memset(buf, 0, sizeof (buf));
-//			sprintf(buf, "Rotation: %u\r\n", msgStruct.rotationDirection);
-//			HAL_UART_Transmit(&huart2, buf, sizeof (buf), 10);
-//			memset(buf, 0, sizeof (buf));
-				sprintf(buf, "Counts per Revolution: %d\r\n",
-						msgStruct.pulsesPerRotation);
-				HAL_UART_Transmit(&huart2, buf, sizeof(buf), 10);
-				memset(buf, 0, sizeof(buf));
-//			sprintf(buf, "RPM: %lf\r\n", msgStruct.rpm);
-//			HAL_UART_Transmit(&huart2, buf, sizeof (buf), 10);
-//			memset(buf, 0, sizeof (buf));
+
+				if (msgStruct.timerCount != msgStructPrev.timerCount) {
+					LCD_TimerCount(msgStruct.timerCount);
+				}
+				if ((msgStruct.aCount != msgStructPrev.aCount)
+						|| (msgStruct.bCount != msgStructPrev.bCount)
+						|| (msgStruct.zCount != msgStructPrev.zCount)) {
+					LCD_ChannelCount(msgStruct);
+				}
+				if (msgStruct.pulsesPerRotation
+						!= msgStructPrev.pulsesPerRotation) {
+					LCD_PulsesPerRotation(msgStruct.pulsesPerRotation);
+				}
+				if (msgStruct.rotationDirection
+						!= msgStructPrev.rotationDirection) {
+					LCD_RotationDirection(msgStruct.rotationDirection);
+				}
+				if (msgStruct.rpm != msgStructPrev.rpm) {
+					LCD_RpmFreq(msgStruct.rpm, msgStruct.freq);
+				}
 			}
 		}
-		osDelay(100);
+
+		memcpy(&msgStructPrev, &msgStruct, sizeof(encoderInstance_t));
+		osDelay(25);
 	}
 	/* USER CODE END taskLCD */
 }
