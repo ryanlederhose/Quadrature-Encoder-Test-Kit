@@ -103,11 +103,19 @@ void LCD_PulsesPerRotation(int pulses);
 void LCD_RotationDirection(int direction);
 
 /**
- * @brief Update the rpm and frequency
+ * @brief Update the rpm, frequency
  * @param rpm rotations per minute
  * @param freq frequency of rotation
+ * @param count	current encoder count
  */
 void LCD_RpmFreq(double rpm, double frequency);
+
+/**
+ * @brief update the position
+ * @param count encoder time count
+ * @param pulseRotation pulses per rotation
+ */
+void LCD_Degrees(int64_t count, int pulseRotation);
 
 /**
  * @brief timer callback function for overflow
@@ -139,10 +147,10 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#define LCD_RESET_Pin GPIO_PIN_12
+#define LCD_RESET_GPIO_Port GPIOB
 #define LCD_DC_Pin GPIO_PIN_13
 #define LCD_DC_GPIO_Port GPIOB
-#define LCD_RESET_Pin GPIO_PIN_14
-#define LCD_RESET_GPIO_Port GPIOB
 #define SPI1_CS_Pin GPIO_PIN_4
 #define SPI1_CS_GPIO_Port GPIOB
 /* USER CODE BEGIN Private defines */
